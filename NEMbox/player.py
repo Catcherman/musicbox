@@ -18,13 +18,15 @@ import os
 import signal
 import random
 from ui import Ui
-
+try:
+    from mpd import MPDClient
+except:
+    MPDClient = None
 
 # carousel x in [left, right]
 carousel = lambda left, right, x: left if (x > right) else (right if x < left else x)
 
-
-class Player:
+class MPEG123Player:
     def __init__(self):
         self.ui = Ui()
         self.datatype = 'songs'
@@ -177,3 +179,98 @@ class Player:
                 self.ui.build_playinfo(item['song_name'], item['artist'], item['album_name'], item['quality'], time.time(), pause=True)
         except IndexError:
             pass
+
+class MPDPlayer:
+    def __init__(self, config=None):
+        self.mpd = MPDClient()
+        self.ui = Ui()
+        self.datatype = 'songs'
+        # flag stop, prevent thread start
+        self.songs = []
+        self.idx = 0 # TODO: Not keep a local idx, but using mpd's playlist
+        self.mpd.connect('127.0.0.1', '6600')
+        self.volume = self.mpd.status()['volume']
+
+    def update_ui(self):
+        self.check_connection()
+        item = self.songs[self.idx]
+        status = self.mpd.status()['state']
+        self.ui.build_playinfo(item['song_name'], item['artist'], item['album_name'], item['quality'], time.time(), pause=(status != 'play'))
+
+    def play(self, datatype, songs, idx):
+        # if same playlists && idx --> same song :: pause/resume it
+        self.datatype = datatype
+        self.check_connection()
+        print idx
+
+        if datatype == 'songs' or datatype == 'djchannels':
+            if idx == self.idx and songs == self.songs:
+                self.toggle()
+            else:
+                #TODO: create a mpd play list.
+                self.mpd.clear()
+                for i in songs:
+                    self.mpd.add(i['mp3_url'])
+                self.songs = songs
+                self.idx = idx
+                # if it's playing
+                self.mpd.play(idx)
+        # if current menu is not song, pause/resume
+        else:
+            self.toggle()
+
+    def check_connection(self):
+        try:
+            self.mpd.status()
+        except:
+            self.mpd.disconnect()
+            self.mpd.connect('127.0.0.1', '6600')
+
+    def stop(self):
+        self.check_connection()
+        self.mpd.stop()
+        self.update_ui()
+
+    def toggle(self):
+        self.check_connection()
+        self.mpd.pause()
+        self.update_ui()
+
+    def next(self):
+        self.check_connection()
+        self.idx = carousel(0, len(self.songs) - 1, self.idx + 1)
+        self.mpd.next()
+        self.update_ui()
+
+    def prev(self):
+        self.check_connection()
+        self.idx = carousel(0, len(self.songs) - 1, self.idx + 1)
+        self.mpd.prev()
+        self.update_ui()
+
+    def shuffle(self):
+        pass # lazy to implement
+
+    def volume_up(self):
+        self.check_connection()
+        self.volume = self.volume + 5 if self.volume < 95 else 100
+        self.mpd.volume(5)
+        self.update_ui()
+
+    def volume_down(self):
+        self.check_connection()
+        self.volume = self.volume - 5 if self.volume > 5 else 0
+        self.mpd.volume(-5)
+        self.update_ui()
+
+    def update_size(self):
+        try:
+            self.ui.update_size()
+            self.update_ui()
+        except IndexError:
+            pass
+
+if MPDClient:
+    Player = MPDPlayer
+else:
+    Player = MPEG123Player
