@@ -189,7 +189,7 @@ class MPDPlayer:
         self.songs = []
         self.idx = 0 # TODO: Not keep a local idx, but using mpd's playlist
         self.mpd.connect('127.0.0.1', '6600')
-        self.volume = self.mpd.status()['volume']
+        self.volume = int(self.mpd.status()['volume'])
 
     def update_ui(self):
         self.check_connection()
